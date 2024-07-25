@@ -23,8 +23,8 @@ import torch
 
 
 from autoencoder_kl import AutoencoderKL
-
-
+from modeling_clip import CLIPTextModel
+from torch_utils import randn_tensor
 
 
 
@@ -778,7 +778,7 @@ class StableDiffusionPipeline():
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
         sigmas: List[float] = None,
-        guidance_scale: [float] = None,
+        guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
