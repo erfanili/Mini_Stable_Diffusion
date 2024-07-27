@@ -15,7 +15,7 @@
 
 
         
-        
+from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import torch 
@@ -60,9 +60,15 @@ from configuration_clip import CLIPConfig, CLIPTextConfig
 
 
 
-
-
-
+#63
+@dataclass
+class CLIPVisionModelOutput():
+    
+    
+    image_embeds: Optional[torch.FloatTensor] = None
+    last_hidden_state: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
+    attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
 
 
 
@@ -807,7 +813,17 @@ class CLIPTextModel():
         
         
         
+#816
+class CLIPVisionTransformer(nn.Module):
+    def __init__(self, config: CLIPVisionConfig):
+        super().__init__()
+        self.config = config
+        embed_dim = config.hidden_size 
         
+        self.embeddings = CLIPVisionEmbeddings(config)
+        self.pre_layernorm = nn.LayerNorm(embed_dim, eps = config.layer_norm_eps)
+        self.encoder = CLIPEncoder(config)
+        self.post_layernorm = nn.LayerNorm(embed_dim, eps = config.layer_norm_eps)        
 
 
 
@@ -819,8 +835,39 @@ class CLIPTextModel():
 
 
 
+#1247
+class CLIPVisionModelWithProjection():
+    def __init__(self, config: CLIPVisionConfg):
+        super().__init__(config)
+        
+        self.vision_model = CLIPVisitonTransformer(config)
+        
+        self.visual_projection = nn.Linear(config.hidden_size, config.projection_dim, biad = False)
 
-
+    def forward(
+        self,
+        pixel_values: Optional[torch.FloatTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None
+    ):
+        #1296
+        vision_outputs = self.vision_model(
+            pixel_values = pixel_values,
+            output_attentions = output_attentions,
+            output_hidden_statse = output_hidden_states
+        )
+        
+        
+        pooled_output = vision_outputs[1]
+        
+        image_embeds = self.visual_projection(pooled_output)
+        
+        
+        return CLIPVisionModelOutput(
+            image_embeds = image_embeds,
+            last_hidden_state = vision_outputs.last_hidden_state,
+            hidden_states = vision_outputs.hidden_states,
+            attentions = vision_outputs.attentions)
 
 
 

@@ -25,11 +25,11 @@ import torch
 from autoencoder_kl import AutoencoderKL
 from modeling_clip import CLIPTextModel
 from torch_utils import randn_tensor
-
-
-
-
-
+from image_processor import VaeImageProcessor
+from tokenization_clip import CLIPTokenizer
+from unet_2d_condition import UNet2DConditionModel    
+from scheduling_ddim import DDIMScheduler
+from clip_image_processor import CLIPImageProcessor
 
 
 
@@ -180,9 +180,8 @@ class StableDiffusionPipeline():
         vae:AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: UNET2DConditionModel,
+        unet: UNet2DConditionModel,
         scheduler: DDIMScheduler,
-        safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,    
