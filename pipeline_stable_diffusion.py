@@ -23,7 +23,7 @@ import torch
 
 
 from autoencoder_kl import AutoencoderKL
-from modeling_clip import CLIPTextModel
+from modeling_clip import CLIPTextModel, CLIPVisionModelWithProjection
 from torch_utils import randn_tensor
 from image_processor import VaeImageProcessor
 from tokenization_clip import CLIPTokenizer
@@ -258,7 +258,7 @@ class StableDiffusionPipeline():
             tokenizer = tokenizer,
             unet = unet,
             scheduler = scheduler,
-            safety_checker = safety_checker,
+            
             feature_extractor = feature_extractor,
             image_encoder = image_encoder,
         )

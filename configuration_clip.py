@@ -22,10 +22,9 @@ import torch
 
 
 from torch import nn
+import os
 
-
-
-
+from configuration_utils import PretrainedConfig
 
 
 
@@ -151,7 +150,57 @@ class CLIPTextConfig():
 
 
 
-
+#151
+class CLIPVisionConfig(PretrainedConfig):
+    
+    
+    model_type = "clip_vision_model"
+    
+    def __init__(
+        self,
+        hidden_size = 768,
+        intermediate_size = 3072,
+        projection_dim = 512,
+        num_hidden_layers = 12,
+        num_attention_heads = 12,
+        num_channels = 3,
+        image_size = 224,
+        patch_size =    32,
+        hidden_act = "quick_gelu",
+        layer_norm_eps = 1e-5,
+        attention_dropout = 0.0,
+        initializer_range = 0.02,
+        initializer_factor = 1.0,
+        **kwargs,
+    ):
+        super().__init__(*kwargs)
+        
+        self.hidden_size = hidden_size 
+        self.intermediate_size = intermediate_size 
+        self.projection_dim = projection_dim 
+        self.num_hidden_layers = num_hidden_layers 
+        self.attentio_heads = num_attention_heads 
+        self.num_channels = num_channels 
+        self.patch_size = patch_size 
+        self.image_size = image_size 
+        self.initializer_range = initializer_range 
+        self.initializer_factor = initializer_factor 
+        self.attention_dropout = attention_dropout 
+        self.layer_norm_eps = layer_norm_eps 
+        self.hidden_act = hidden_act 
+        
+        
+    @classmethod 
+    def from_pretrained(cls, pretrained_model_name_or_path: Union[str, os.PathLike], **kwrgs) -> "PretrainedConfig":
+        cls._set_token_in_kwargs(kwargs)
+        
+        config_dict, kwargs = cls.get_config_dict(pretrained_model_name_or_path, **kwargs)
+        
+        if config_dict.get("model_type") == "clip":
+            config_dict = config_dict["cision_config"]
+            
+        return cls.form_dict(config_dict, **kwargs)
+        
 
 
 

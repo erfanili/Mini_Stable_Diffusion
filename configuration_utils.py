@@ -13,3 +13,11 @@ def register_to_config(init):
     
     
     return inner_init
+
+
+
+
+class PretrainedConfig():
+    def __init__(self, **kwargs):
+        self.output_hidden_states = kwargs.pop("output_hidden_states", False)
+        

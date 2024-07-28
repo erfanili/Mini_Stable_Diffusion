@@ -27,6 +27,7 @@ from activations import ACT2FN
 from modeling_attn_mask_utils import _create_4d_causal_attention_mask
 
 
+from modeling_output import BaseModelOutputWithPooling
 
 
 
@@ -35,8 +36,7 @@ from modeling_attn_mask_utils import _create_4d_causal_attention_mask
 
 
 
-
-from configuration_clip import CLIPConfig, CLIPTextConfig
+from configuration_clip import CLIPConfig, CLIPTextConfig, CLIPVisionConfig
 
 
 
@@ -155,43 +155,40 @@ class CLIPVisionModelOutput():
 
 
 
+#158
+class CLIPVisionEmbeddings(nn.Module):
+    def __init__(self, config:CLIPVisionConfig):
+        super().__init__()
+        self.config = config
+        self.embed_dim = config.hidden_size
+        self.image_size = config.hidden_size
+        self.patch_size = config.patch_size
+        
+        
+        self.class_embedding = nn.Parameter(torch.randn(self.embed_dim))
+        
+        self.patch_embedding = nn.Conv2d(
+            in_channels = config.num_channels,
+            out_channels = self.embed_dim,
+            kernel_size = self.patch_size,
+            strid = self.patch_size,
+            bias = False,
+        )
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        self.num_patches = (self.image_size // self.patch_size) ** 2
+        self.num_positions = self.num_patchers + 1
+        self.position_embedding = nn.Embedding(self.num_positions, self.embed_dim)
+        
+    def forward(self, pixel_values: torch.FloatTensor) -> torch.Tensor:
+        batch_size = pixel_values.shape[0]
+        target_dtype = self.patch_embedding.weight.dtype 
+        patch_embeds = self.patch_embedding(pixel_values.to(dtype = target_dtype))
+        patch_embeds = patch_embeds.flatten(2).transpose(1,2)
+        
+        class_embeds = self.class_embedding.expand(batch_size, 1, -1)
+        embeddings = torch.cat([class_embeds, patch_embeds], dim = 1)
+        embeddings = embeddings + self.position_embedding(self.position_ids)
+        return embeddings
 
 
 
@@ -826,7 +823,39 @@ class CLIPVisionTransformer(nn.Module):
         self.post_layernorm = nn.LayerNorm(embed_dim, eps = config.layer_norm_eps)        
 
 
-
+        def forward(
+            self,
+            pixel_values: Optional[torch.FloatTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+        )->Union[Tuple, BaseModelOutputWithPooling]:
+            
+            
+            output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions 
+            output_hidden_states = (
+                output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            )
+            
+            hidden_state = self.embeddings(pixel_values)
+            hidden_states = self.pre_layernorm(hidden_states)
+            
+            encoder_outputs = self.encoder(
+                inputs_embeds =hidden_states ,
+                output_attentions = output_attentions,
+                output_hidden_states = output_hidden_states,
+            )
+            
+            last_hidden_state = encoder_outputs[0]
+            pooled_output = last_hidden_state[:,0,:]
+            pooled_output = self.post_layernorm(pooled_output)
+            
+            
+            return BaseModelOutputWithPooling(
+                last_hidden_states = last_hidden_state, 
+                pooler_output = pooled_output,
+                hidden_states = encoder_outputs.hidden_states,
+                attentions = encoder_outputs.attentions,
+            )
 
 
 
@@ -837,10 +866,10 @@ class CLIPVisionTransformer(nn.Module):
 
 #1247
 class CLIPVisionModelWithProjection():
-    def __init__(self, config: CLIPVisionConfg):
+    def __init__(self, config: CLIPVisionConfig):
         super().__init__(config)
         
-        self.vision_model = CLIPVisitonTransformer(config)
+        self.vision_model = CLIPVisionTransformer(config)
         
         self.visual_projection = nn.Linear(config.hidden_size, config.projection_dim, biad = False)
 
