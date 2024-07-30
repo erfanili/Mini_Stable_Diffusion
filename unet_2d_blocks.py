@@ -7,7 +7,7 @@ from torch import nn
 from resnet import ResnetBlock2D
         
         
-        
+from upsampling import Upsample2D
     #42
 def get_down_block(
     down_block_type: str,
