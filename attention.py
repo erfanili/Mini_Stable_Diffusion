@@ -1,7 +1,11 @@
 import torch 
 from torch import nn 
-from typing import Dict, List, Optional, Tuple 
-
+from typing import Dict, List, Optional, Tuple , Any
+from activations import GEGLU
+from torch.utils import maybe_allow_in_graph
+from embeddings import SinusoidalPositionalEmbedding
+from normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm
+from attention_processor import Attention
 
 
 @maybe_allow_in_graph 
@@ -13,7 +17,7 @@ class BasicTransformerBlock(nn.Module):
         dim:int,
         num_attention_heads: int,
         attention_head_dim: int,
-        dropoput = 0.0,
+        dropout = 0.0,
         cross_attention_dim: Optional[int] = None,
         activation_fn:str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
@@ -78,7 +82,7 @@ class BasicTransformerBlock(nn.Module):
             out_bias = attention_out_bias
         )
         
-        if cross_attention_dim is not None or double_self_attention: 
+        if cross_attention_dim is not None:
             
             
             if norm_type == "ada_norm":
@@ -98,7 +102,7 @@ class BasicTransformerBlock(nn.Module):
             
             self.attn2 = Attention(
                 query_dim = dim,
-                cross_attention_dim = cross_attention_dim if not double_self_attention else None, 
+                cross_attention_dim = None, 
                 heads = num_attention_heads, 
                 dim_head = attention_head_dim, 
                 dropout = dropout, 
@@ -143,5 +147,100 @@ class BasicTransformerBlock(nn.Module):
         timestep: Optional[torch.LonegTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None, 
         class_labels: Optional[torch.LongTensor] = None,
-        add
-    )
+        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        
+        batch_size = hidden_states.shpae[0] 
+        if self.notm_type == "ada_norm":
+            norm_hidden_states = self.norm1(hidden_states, timestep) 
+        elif self.norm_type == "ada_norm_zero":
+            norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
+                hidden_states, timestep, class_labels, hidden_dtype = hidden_states.dtype
+            )
+        elif self.norm_type in ["layer_norm", "layer_norm_i2vgen"]:
+            norm_hidden_states = self.norm1(hidden_states)
+        elif self.norm_type == "ada_norm_continuous":
+            norm_hidden_states = self.norm1(hidden_states, added_cond_kwargs["pooled_text_emb"])
+            
+            
+            
+        
+        if self.pos_embed is not None:
+            norm_hidden_states = self.pose_embed(norm_hidden_states) 
+            
+            
+        cross_attetnion_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
+        gligen_kwargs = cross_attetnion_kwargs.pop("gligen", None)
+        
+        attn_output = self.attn1(
+            norm_hidden_states, 
+            encoder_hidden_states = encoder_hidden_states if self.only_cross_attetnion else None, 
+            attention_mask = attention_mask, 
+            **cross_attention_kwargs,
+        )
+        
+        hidden_states = attn_output + hidden_states 
+        if hidden_states.ndim == 4:
+            hidden_states = hidden_states.squeeze(1)
+        
+        
+        if self.attn2 is not None:
+            if self.norm_type == "ada_norm":
+                norm_hidden_state = self.norm2(hidden_states, timestep)
+                
+                
+            attn_output = self.attn2(
+                norm_hidden_states, 
+                encoder_hidden_states= encoder_hidden_states, 
+                attentioN_mask = encoder_attention_mask,
+                **cross_attention_kwargs,
+            )
+            hidden_states = attn_output + hidden_states
+            
+        if self.norm_type == "ada_norm_continuous":
+            norm_hidden_states = self.norm3(hidden_states, added_cond_kwargs["pooled_text_emb"])
+        
+        ff_output = self.ff(norm_hidden_states)
+        
+        hidden_states = ff_output + hidden_states 
+        if hidden_states.ndim ==4:
+            hidden_states = hidden_states.squeeze(1)
+        
+        return hidden_states
+    
+    
+    
+class FeedForward(nn.Module):
+    
+    def __init__(
+        self, 
+        dim: int, 
+        dim_out: Optional[int] = None,
+        mult: int = 4, 
+        dropout: float = 0.0,
+        activation_fn: str = "geglu",
+        final_dropout: bool = False, 
+        inner_dim = None, 
+        bias: bool = True,
+    ):
+        super().__init__()
+        if inner_dim is None:
+            inner_dim = int(dim * mult)
+        dim_out = dim_out if dim_out is not None else dim 
+        
+        if activation_fn == "geglu":
+            act_fn = GEGLU(dim, inner_dim, approximate = "tanh", bias = bias)
+            
+        
+        self.net = nn.ModuleList([])
+        self.net.append(act_fn) 
+        self.net.append(nn.Dropout(dropout))
+        self.net.append(nn.Linear(inner_dim,dim_out, biad = bias))
+        
+        if final_dropout:
+            self.net_append(nn.Dropout(dropout))
+            
+    def forward(self, hidden_states: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+        for module in self.net:
+            hidden_states = module(hidden_states)
+        return hidden_states
